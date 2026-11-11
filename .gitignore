@@ -22,6 +22,9 @@ log(*).txt
 *.jpg
 !docs/img/*.png
 !docs/img/**/*.png
+!app/src/main/res/**/*.png
+!app/src/main/res/**/*.webp
+!app/src/main/res/**/*.9.png
 
 # 抓回来的第三方档案（不入库）
 magicroot-dump/
