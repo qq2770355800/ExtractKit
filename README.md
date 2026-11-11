@@ -2,6 +2,8 @@
 
 **面向荣耀 / MagicOS 的内核 exploit 实验工具**：把 *本机 boot 镜像里的 kallsyms 与结构偏移* 自动算成 payload 需要的常量，然后跑 CVE-2026-98260（POSIX CPU timer UAF → 8 字节零写 → 伪造 cred → `ksud late-load` 装载 KernelSU）。
 
+[![CI](https://github.com/qq2770355800/ExtractKit/actions/workflows/build.yml/badge.svg)](https://github.com/qq2770355800/ExtractKit/actions/workflows/build.yml)
+
 界面用 Jetpack Compose + 真实背景采样的「液态玻璃」实现；所有提权动作在 Shizuku 提供的 shell 上下文里执行（也可在 KernelSU 的 `su` 下运行）。
 
 
@@ -10,6 +12,18 @@
 <sub>左：主页（真实背景采样 + 液态玻璃）。运行日志在同窗口弹出，不再另开 Dialog。</sub>
 
 > 这是一个**研究/自用**项目。它会改内核对象、可能 panic 重启、可能丢失数据；只在**你自己的设备**上跑。
+
+---
+
+## 直接下载 APK
+
+不用自己编译，点这里拿最新的 release 包：
+
+**[→ 最新构建（Actions）](https://github.com/qq2770355800/ExtractKit/actions/workflows/build.yml)**
+
+打开最新一次成功的 run → 页面底部 **Artifacts** → 下载 `ExtractKit-release.zip` → 解压得到 `app-release.apk`。
+
+装之前请确认：Android 12+ / arm64、Shizuku 已授权（或已有 KernelSU 的 `su`）、并在「标定」里导入过本机 boot 镜像（或正好命中内置 profile）。
 
 ---
 
