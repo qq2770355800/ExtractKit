@@ -1,0 +1,24 @@
+name: 缺陷
+description: 崩溃、解析错误、UI 问题
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+  - type: input
+    id: ver
+    attributes:
+      label: 版本
+      placeholder: 9.26 (versionCode 214)
+  - type: textarea
+    id: log
+    attributes:
+      label: 日志 / 崩溃栈
+      render: text

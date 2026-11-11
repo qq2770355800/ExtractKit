@@ -1,0 +1,8 @@
+# names_start=0x1348f00 num_syms=110306 relative_base=0xffffffc080000000
+ffffffc0803afc58 do_timer_create
+ffffffc0823ba418 selinux_state
+ffffffc08216ae0c panic_on_warn
+ffffffc08218f228 root_user
+ffffffc08218ef98 init_user_ns
+ffffffc082190cf8 init_ucounts
+ffffffc082190788 init_groups

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Shizuku 客户端三件套 -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- Android 11+ 要显式声明才能看到这些包 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- 查询固件包要访问荣耀的下载服务 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="com.sukisu.ultra" />
+        <package android:name="com.resukisu.resukisu" />
+        <package android:name="com.ghostlock.ksu" />
+        <package android:name="org.bakasu.bakasu" />
+        <package android:name="com.kowx712.supermanager" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ExtractKit">
+
+        <activity
+            android:name=".GlassMainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.ExtractKit.Glass">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".FirmwareActivity"
+            android:exported="false"
+            android:label="查询固件包"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <activity
+            android:name=".GlassCalibrationActivity"
+            android:exported="false"
+            android:label="标定" />
+
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true">
+            <meta-data
+                android:name="moe.shizuku.client.V3_SUPPORT"
+                android:value="true" />
+        </provider>
+
+        <!-- Shizuku 以 shell uid 加载这个 UserService；payload 在它里面被 fork 出来 -->
+        <service
+            android:name=".ExtractUserService"
+            android:exported="false"
+            android:enabled="true"
+            tools:ignore="Instantiatable" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

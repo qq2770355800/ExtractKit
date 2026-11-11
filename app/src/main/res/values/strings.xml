@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ExtractKit</string>
+    <string name="btn_shizuku">授权 Shizuku</string>
+    <string name="btn_probe">环境探测</string>
+    <string name="btn_run">开始提取</string>
+    <string name="btn_stop">停止</string>
+    <string name="btn_clear">清空日志</string>
+    <string name="btn_share">导出日志</string>
+    <string name="cb_force">跳过内核匹配检查（高级，未匹配时风险极高）</string>
+    <string name="cb_ack">我已知悉：利用失败可能导致内核 panic 或设备重启，且成功后不能 kill 驻留进程</string>
+    <string name="stage_idle">就绪</string>
+</resources>

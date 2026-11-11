@@ -1,0 +1,43 @@
+name: 新机型 / 内核支持
+description: 希望某个内核被内置（附上解析结果或日志）
+labels: ["kernel-support"]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: 机型
+      placeholder: PPG-AN00
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: 内核完整版本
+      description: `adb shell uname -r` 的整行，必须带 g 后面的 hash
+      placeholder: 6.6.118-android15-8-g554929766a0d-abogki544555896-4k
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 现在卡在哪
+      options:
+        - 标定就失败（解析不出符号 / 偏移）
+        - 预检 READY，但 plant 窗口拿不到
+        - 提权到了 uid=0，但管理器不认
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: 运行日志
+      description: 贴 `extract-*.log` 里从 `[env]` 到 `CHAIN_STOP` 的那段即可，删掉序列号
+      render: text
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: 确认
+      options:
+        - label: 这是我自己设备上的测试，已知晓可能 panic / 丢失数据
+          required: true
