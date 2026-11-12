@@ -103,6 +103,7 @@ MIT，见 [`LICENSE`](LICENSE)。`payload/cve-2026-98260-android` 是公开 PoC 
 ## 致谢
 
 - CVE-2026-98260 的公开分析与其原始 PoC 作者
+- CVE-2026-98937 的公开披露者（`perf_event_open` callchain 绕过，只泄漏 KASLR slide，不是提权原语；本项目只用它做标定，见 [`docs/credits.md`](docs/credits.md)）
 - KernelSU / SukiSU / MilkSU 等管理器
 - [io.github.kyant0:backdrop](https://github.com/Kyant0/AndroidLiquidGlass) 的液态玻璃实现
 - Shizuku（提供 shell 上下文）
