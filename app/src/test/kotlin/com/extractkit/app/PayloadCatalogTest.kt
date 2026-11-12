@@ -72,7 +72,7 @@ class PayloadCatalogTest {
             .associate { line ->
                 val idx = line.indexOf("  ")
                 require(idx > 0) { "SHA256SUMS 行格式不对: $line" }
-                line.substring(idx + 2).trim() to line.substring(0, idx).trim()
+                line.substring(idx + 2).trim().removePrefix("payload/") to line.substring(0, idx).trim()
             }
 
         for (p in allPayloads()) {
@@ -80,7 +80,7 @@ class PayloadCatalogTest {
             assertEquals(
                 "SHA256SUMS 里 ${p.asset} 的哈希与 catalog 不一致",
                 p.sha256,
-                listed[rel],
+                listed[rel.removePrefix("payload/")],
             )
         }
     }
