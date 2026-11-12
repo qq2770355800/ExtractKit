@@ -118,6 +118,7 @@ object Shell {
         boundConnection = connection
 
         Handler(Looper.getMainLooper()).post {
+            if (boundArgs == null) reapStaleUserServices()
             runCatching { Shizuku.bindUserService(args, connection) }
                 .onFailure {
                     lastError = "bind 失败：$it"
@@ -135,6 +136,24 @@ object Shell {
         }
         boundArgs = args
         return true
+    }
+
+    /**
+     * 清掉上一次会话遗留的 UserService 进程。
+     *
+     * Shizuku 的 UserService 是**独立进程**（`com.extractkit.app:shell`）。App 被
+     * 强停/被杀时 binder 直接断，Shizuku 不会回收那个进程，于是它变成 ppid=1 的
+     * 孤儿，每个约 130 MB。这里在**绑定新的 UserService 之前**用 su 把它们清掉；
+     * 此刻我们自己还没绑，杀掉是安全的（提权成功后 su 守护进程独立存在，不受影响）。
+     */
+    private fun reapStaleUserServices() {
+        runCatching {
+            val p = ProcessBuilder(
+                "su", "-c",
+                "for p in \$(pgrep -f 'com.extractkit.app:shell'); do kill -9 \$p 2>/dev/null; done",
+            ).redirectErrorStream(true).start()
+            p.waitFor(6, TimeUnit.SECONDS)
+        }
     }
 
     fun disconnect() {

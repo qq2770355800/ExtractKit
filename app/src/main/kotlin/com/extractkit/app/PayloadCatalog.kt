@@ -31,19 +31,19 @@ object Payloads {
         "6.1" to Payload(
             "cve-2026-98260-uid0-6.1",
             "payload/fam/cve-2026-98260-uid0-6.1",
-            "7f10c0f54417a79cfa227f51d0633d4514d2165b4ae5623958a6e4be2247f3b7",
+            "1c06fd4d1762af07aeb161c48dee80aa08a174fd1c236b17b354d4253ca6b2cf",
             "6.1.x 分支专用（含 cred site-hit 诊断）",
         ),
         "5.10" to Payload(
             "cve-2026-98260-uid0-5.10",
             "payload/fam/cve-2026-98260-uid0-5.10",
-            "7f10c0f54417a79cfa227f51d0633d4514d2165b4ae5623958a6e4be2247f3b7",
+            "1c06fd4d1762af07aeb161c48dee80aa08a174fd1c236b17b354d4253ca6b2cf",
             "5.10.x 分支专用：事件布局按该分支编死，跑错分支自行拒绝",
         ),
         "5.15" to Payload(
             "cve-2026-98260-uid0-5.15",
             "payload/fam/cve-2026-98260-uid0-5.15",
-            "7f10c0f54417a79cfa227f51d0633d4514d2165b4ae5623958a6e4be2247f3b7",
+            "1c06fd4d1762af07aeb161c48dee80aa08a174fd1c236b17b354d4253ca6b2cf",
             "5.15.x 分支专用：事件布局按该分支编死，跑错分支自行拒绝",
         ),
     )

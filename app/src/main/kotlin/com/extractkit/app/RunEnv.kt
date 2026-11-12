@@ -39,8 +39,15 @@ object RunEnv {
      * 环境变量必须贴在**要被赋值的命令**前面：`VAR=x cd dir && ./bin` 只给 cd
      * 设了变量，`./bin` 一点都拿不到（这个坑真踩过，表现就是管理器选了没用）。
      */
-    fun command(workDir: String, name: String, args: String, pkg: String?): String {
+    fun command(
+        workDir: String,
+        name: String,
+        args: String,
+        pkg: String?,
+        slideHex: String? = null,
+    ): String {
         val tail = if (args.isBlank()) "" else " $args"
-        return "cd $workDir && ${prefix(pkg)}./$name$tail"
+        val slide = if (slideHex.isNullOrBlank()) "" else "EXTRACTKIT_SLIDE=$slideHex "
+        return "cd $workDir && $slide${prefix(pkg)}./$name$tail"
     }
 }

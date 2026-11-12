@@ -183,7 +183,9 @@ static int lay_build(const char *root)
 		e->id = (unsigned)id;
 		e->kind = kind;
 		snprintf(e->name, sizeof(e->name), "%s", de->d_name);
-		snprintf(fp, sizeof(fp), "%s/%s/format", dir, de->d_name);
+		{ size_t dl = strlen(dir);
+		  snprintf(fp, sizeof(fp), "%.*s/%s/format",
+		           (int)((dl && dir[dl - 1] == '/') ? dl - 1 : dl), dir, de->d_name); }
 		lay_parse_format(fp, &e->f);
 		if (!e->f.has_site && !e->f.has_pfn)
 			continue;

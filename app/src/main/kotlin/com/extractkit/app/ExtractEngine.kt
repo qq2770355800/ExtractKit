@@ -201,9 +201,10 @@ class ExtractEngine(
         onStageUpdate: (String) -> Unit = onStage,
         managerPkg: String? = null,
         safeMode: Boolean = false,
+        slideHex: String? = null,
     ): Outcome = withContext(Dispatchers.IO) {
         if (mode.steps.isEmpty()) {
-            return@withContext runSingle(mode, allowUnmatched, onStageUpdate, managerPkg, safeMode)
+            return@withContext runSingle(mode, allowUnmatched, onStageUpdate, managerPkg, safeMode, slideHex)
         }
         // 同一次开机只允许成功一次：UAF 是一次性资源，成功后再跑等于对已释放的槽位再写一遍。
         // 用内核自己给的 boot_id 判断，而不是我们的时间戳——重启后 boot_id 一定会变。
@@ -253,6 +254,7 @@ class ExtractEngine(
         onStageUpdate: (String) -> Unit = onStage,
         managerPkg: String? = null,
         safeMode: Boolean = false,
+        slideHex: String? = null,
     ): Outcome = withContext(Dispatchers.IO) {
         // 管理器包名：payload 用它决定 ksud late-load --package-name。
         // 传不进去就会退回编译期默认（com.sukisu.ultra），选别的管理器会「提权成功但没接管」。
@@ -311,11 +313,17 @@ payload 只会用编译期常量（6.6.118 那套），在别的内核上跑不�
         // "5.10.252"（版本号是主.次.补丁三段），永远匹配不到 PER_FAMILY 的 "5.10"。
         // 这里取「主.次」两段，其余部分（补丁号/构建串）不参与匹配。
         val family = env.kernel.split('.').take(2).joinToString(".")
-    // 9.18：5.x 用分支专用版；5.x 以外一律用 9.00 那份字面成功版（不重编）
-    val pickedPayload = if (family.startsWith("5.") || family == "6.1") {
-        Payloads.PER_FAMILY[family] ?: mode.target
-    } else {
-        mode.target
+    // 9.33：只有 5.x 用分支专用版；6.x（含 6.1）一律回到 9.00 那份字面成功版。
+    // 原因：9.27–9.31 对 6.1 fam 二进制做的重试/校验改动在 6.6.118 与 6.1.157 上都出现了回归，
+    // 而 9.00 那份是唯一在真机上稳定拿到 uid=0 的版本。
+    // 9.53 例外：98937 标定要把 slide 通过 EXTRACTKIT_SLIDE 注入，而只有 fam 版认识这个变量；
+    // 所以带 slideHex 时优先 fam（哪怕 6.x），没有对应分支才回落通用版。
+    val famPayload = Payloads.PER_FAMILY[family]
+    val pickedPayload = when {
+        famPayload == null -> mode.target
+        family.startsWith("5.") -> famPayload
+        slideHex != null -> famPayload
+        else -> mode.target
     }
         if (pickedPayload !== mode.target) {
             log("· payload：${pickedPayload.name}（内核分支 $family*）")
@@ -332,7 +340,7 @@ payload 只会用编译期常量（6.6.118 那套），在别的内核上跑不�
             onStageUpdate("预检 ${pickedPayload.name} $args")
             log("---- 预检：${pickedPayload.name} $args ----")
             val pre = stream(
-                cmd = RunEnv.command(WORK_DIR, pickedPayload.name, args, managerPkg),
+                cmd = RunEnv.command(WORK_DIR, pickedPayload.name, args, managerPkg, slideHex),
                 markers = listOf("READY", "PREFLIGHT_PASS"),
                 timeoutSec = 150,
                 persistOnSuccess = false,
@@ -349,7 +357,7 @@ payload 只会用编译期常量（6.6.118 那套），在别的内核上跑不�
         onStageUpdate("执行 ${pickedPayload.name} ${mode.args.ifEmpty { "(默认)" }}")
         log("---- 主链：${pickedPayload.name} ${mode.args} ----")
         val res = stream(
-            cmd = RunEnv.command(WORK_DIR, pickedPayload.name, mode.args, managerPkg),
+            cmd = RunEnv.command(WORK_DIR, pickedPayload.name, mode.args, managerPkg, slideHex),
             markers = mode.successMarkers,
             timeoutSec = mode.timeoutSec,
             persistOnSuccess = mode.persists,

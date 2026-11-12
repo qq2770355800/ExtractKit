@@ -223,8 +223,9 @@ class GlassMainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** 四级文案：本机 cfg > 内置 profile > 服务器已收录 > 未知 */
+    /** 四级文案：本机 cfg > 内置 profile > 已收录（未验证）> 未知 */
     private fun adaptLabel(kernel: String): String {
+        if (!ConfigGen.isVulnerable(kernel)) return "该内核不在受影响范围"
         val hasCfg = runCatching { ConfigGen.cfgBytesForCurrentKernel(this) != null }.getOrDefault(false)
         if (hasCfg) return "已适配（本机标定）"
         val hit = ConfigGen.PROFILES.firstOrNull { ConfigGen.sameKernel(it.release, kernel) }
@@ -240,7 +241,7 @@ class GlassMainActivity : ComponentActivity() {
             } else {
                 ""
             }
-            return "服务器已收录（需标定）$rate"
+            return "已收录（未验证，需标定）$rate"
         }
         return "内核未知，点「标定」重试"
     }

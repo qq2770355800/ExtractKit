@@ -1,5 +1,14 @@
 # 更新记录
 
+## 9.61
+- `fam/*` payload 统一为同一支（含 5.10 的 `req@+16 / alloc@+20` 嗅探修正、`[slab] task_struct objsize` 诊断、pipe 页级 reclaim 覆盖零写阶段）
+- payload 自报的 `target:` 行改为按 `device.cfg` 实际值打印（不再硬编码机型名）
+- `[lay]` 日志里的 `events/kmem//format` 双斜杠修正
+- 9.59：`run98937` 先下发 `device.cfg`，标定器不再用编译期默认锚点；新增 `boot_id` 守卫（同一次开机只成功一次）
+- 9.60：标定器日志前缀 `[calib]` → `[98937]`
+- 9.52–9.58：彻底移除第三方 98937 后端（`assets/be/`、`assets/poc98937`、`assets/cve98937/profiles/`、`Cve98937Tables.kt`），APK 从 15.2 MB 降到 5.9 MB
+- 9.58：标定器 arm 顺序修正 —— `enable_event:kmem:<name>` 必须写 `rss_stat/trigger`，`rss_stat/enable` 只接受数字（此前 `host=0 (EINVAL)` 导致标定一直空转）
+
 ## 9.26
 - 修 `PayloadCatalog` 与 `assets` 的 sha 不一致（9.25 里 fam/6.1 残留旧值，装机即 `DEPLOY` 中止）
 - `[cred]` 选择不再要求 `bytes_req == bytes_alloc`（SLUB 里这两者天生差一次对齐），改为尺寸区间 + 精确尺寸优先
